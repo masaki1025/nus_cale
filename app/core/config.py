@@ -1,7 +1,8 @@
-"""環境設定を扱うモジュール。
+"""
+アプリ共通の設定読み込みモジュール。
 
-Settings クラスで .env から環境変数を読み込み、
-アプリ全体で利用する設定値を提供します。
+Settings クラスが .env から環境変数を読み込み、
+アプリ全体で参照する設定値を保持します。
 """
 
 from functools import lru_cache
@@ -17,16 +18,13 @@ class Settings:
     """
 
     def __init__(self) -> None:
-        """環境変数を読み込み、各種設定値を初期化する。
-
-        TODO:
-        - 必須値のバリデーション（空の場合のエラー化、警告ログなど）
-        - 機密情報の取り扱い（マスキングログ、外部Secret管理への移行）
-        """
+        """環境変数を読み込み、各種設定値を初期化します。"""
         load_dotenv()  # .env があれば読み込む
         self.env = os.getenv("ENV", "development")
         self.port = int(os.getenv("PORT", "8000"))
         self.tz = os.getenv("TZ", "Asia/Tokyo")
+        # 通知スケジュール（例: "19:00,07:00"）。未設定ならスケジューラは起動しない。
+        self.notify_schedules = os.getenv("NOTIFY_SCHEDULES", "")
 
         # LINE
         self.line_channel_secret = os.getenv("LINE_CHANNEL_SECRET", "")
@@ -36,6 +34,14 @@ class Settings:
         self.google_project_id = os.getenv("GOOGLE_PROJECT_ID", "")
         self.google_sa_json = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
         self.sheets_id = os.getenv("SHEETS_ID", "")
+        # 任意: ワークシート指定（タイトルまたはgid）
+        self.sheets_worksheet_title = os.getenv("SHEETS_WORKSHEET_TITLE", "")
+        self.sheets_gid = os.getenv("SHEETS_GID", "")
+
+        # Users（ユーザー設定/回避リストの保管先）
+        # JSONファイルパスを推奨（例: app/data/users.json）
+        self.users_json = os.getenv("USERS_JSON", "")
+        self.default_user_id = os.getenv("DEFAULT_USER_ID", "")
 
 
 @lru_cache
@@ -44,9 +50,6 @@ def get_settings() -> Settings:
 
     lru_cache により初回呼び出し時に一度だけインスタンス化し、
     以降は同一インスタンスを返します。
-
-    TODO:
-    - 実行時に設定を再読込したい場合（管理APIなど）に備えて、
-      キャッシュをクリアするユーティリティを用意する。
     """
     return Settings()
+

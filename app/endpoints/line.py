@@ -11,10 +11,10 @@ async def line_webhook(payload: dict = Body(...)):
     引数:
         payload: LINE プラットフォームから届く生の JSON ペイロード
 
-    TODO:
-    - チャネルシークレットを用いた署名検証
-    - イベント種別（message, follow, postback など）の分岐実装
-    - 返信／プッシュ送信の整理（即時応答と非同期処理の切り分け）
-    - リトライと冪等性（重複イベント対策）
+    備考:
+    - 署名検証（チャネルシークレット）は未実装
+    - イベント種別（message, follow, postback など）の分岐は未実装
+    - 実運用では push 通知連携や状態管理が必要
     """
     return {"ok": True, "received": True}
+

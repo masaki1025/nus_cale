@@ -7,12 +7,13 @@ def setup_logging(level: int = logging.INFO) -> None:
     引数:
         level: ログレベル（デフォルト INFO）
 
-    TODO:
-    - 本番では JSON 形式の構造化ログに切替（例: `python-json-logger` 等）
-    - モジュールごとのレベル調整（uvicorn, httpx などの冗長ログ低減）
-    - リクエストIDの付与（ミドルウェア連携）
+    備考:
+    - 必要であれば JSON フォーマットに切り替え可能（例: python-json-logger）
+    - ライブラリごとのレベル調整（uvicorn, httpx など）は別途設定
+    - リクエストID付与などはミドルウェアで対応
     """
     logging.basicConfig(
         level=level,
         format="%(asctime)s %(levelname)s %(name)s - %(message)s",
     )
+

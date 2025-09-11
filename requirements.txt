@@ -2,5 +2,9 @@ fastapi
 uvicorn[standard]
 python-dotenv
 pydantic>=2
-apscheduler
+APScheduler>=3.10
 httpx
+gspread
+google-auth
+tzdata; platform_system == 'Windows'
+uv

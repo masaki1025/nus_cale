@@ -1,0 +1,17 @@
+{
+  "users": [
+    {
+      "id": "alice",
+      "my_name": "佐藤美咲",
+      "line_user_id": "Uxxxxxxxx_alice",
+      "avoid_list": ["鈴木花", "中村結衣"]
+    },
+    {
+      "id": "bob",
+      "my_name": "田中優",
+      "line_user_id": "Uxxxxxxxx_bob",
+      "avoid_list": ["高橋葵"]
+    }
+  ]
+}
+

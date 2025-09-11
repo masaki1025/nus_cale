@@ -11,9 +11,8 @@ def send_message(line_user_id: str, message: str) -> Dict[str, Any]:
     戻り値:
         送信結果（スタブ）
 
-    TODO:
-    - LINE Messaging API（push message）実装
-    - アクセストークン管理とリトライ（429/5xx）
-    - 監査ログ（送信ログの永続化）
+    備考:
+        本実装では実送信しません。将来 LINE Messaging API（push message）で置き換えます。
     """
     return {"ok": True, "user": line_user_id, "message": message}
+
