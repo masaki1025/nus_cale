@@ -125,3 +125,21 @@ def shutdown_schedules(wait: bool = False) -> None:
         logger.info("スケジューラを停止しました")
     finally:
         _scheduler = None
+
+
+def is_scheduler_running() -> bool:
+    """スケジューラが起動中か判定する。"""
+    return _scheduler is not None
+
+
+def get_jobs_info() -> list[dict]:
+    """登録済みジョブの簡易情報を返す。空の場合は未登録または停止中。"""
+    if _scheduler is None:
+        return []
+    infos = []
+    for job in _scheduler.get_jobs():
+        infos.append({
+            "id": job.id,
+            "next_run_time": job.next_run_time.isoformat() if job.next_run_time else None,
+        })
+    return infos

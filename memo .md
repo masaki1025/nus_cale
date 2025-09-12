@@ -1,60 +1,77 @@
-FastAPIでAPIサーバを構成し、Googleシートからシフトを取得→「苦手な人」との勤務一致を判定→必要に応じてLINE通知する流れ。
+結論（要約）
 
-設定は.env→app/core/config.pyのSettingsに集約。層は「core / repositories / services / endpoints」で分離。
-主要コンポーネント
+動くMVPは満たしています。運用・安全・保守でのギャップは主に「多ユーザー運用・堅牢なWebhook処理・観測性・テスト・デプロイ整備」にあります。
+先に「長形データ統一・通知ロジックの汎用化・SDK送信の堅牢化・管理APIの保護」まで済んでいるのはとても良い流れです。
+高優先（すぐ効く）
 
-core
-<!-- app/core/config.py: .env読込。SHEETS_ID, GOOGLE_SERVICE_ACCOUNT_JSON, LINE_*, TZなど。 -->
-<!-- app/core/scheduler.py: 定期実行の枠（現状スタブ）。 -->
-app/core/logging.py: ログ初期化（必要に応じて使用）。
-repositories
-<!-- app/repositories/sheet_repo.py: シフト取得の倉庫係（実体はservicesへ委譲）。 -->
-<!-- app/repositories/user_repo.py: ユーザー設定/回避リストの取得（現状スタブ。将来DB/Sheets等へ）。 -->
-services
-<!-- app/services/sheets_client.py: Google Sheets/ローカルCSVからシフト行を取得。 -->
-<!-- app/services/matching.py: 勤務一致判定（現状スタブ）。 -->
-<!-- app/services/notify_service.py: 通知実行のオーケストレーション。 -->
-app/services/line_client.py: LINE送信のスタブ（Push実装は今後差し替え）。
-endpoints
-app/endpoints/health.py: ヘルスチェック。
-app/endpoints/line.py: LINE Webhook受信（現状スタブ。署名検証など今後）。
-app/endpoints/jobs.py: /jobs/notifyで通知バッチを手動起動。
-app/endpoints/admin.py: 設定リロードなどの管理操作（スタブ）。
-エントリ
-app/main.py: FastAPIアプリ生成・ルータ登録。
-データフロー（通知まで）
+多ユーザー対応（スケジューラ）
+対象: app/services/notify_service.py, app/core/scheduler.py
+既定ユーザー1名→users.jsonの全ユーザーを順次処理（小人数前提で直列可）
+受付基準: 全ユーザーでrun_notifyがエラーなく回り、0/複数件も正しく集計
+LINE送信の堅牢化
+対象: app/services/line_client.py
+追加: 429/5xxのリトライ（指数バックオフ）、長文分割（5000字上限対策）
+受付基準: ネットワーク瞬断・429でも一定回数で復帰/ログに残る
+Webhook最小拡張
+対象: app/endpoints/line.py, app/repositories/user_repo.py
+追加: followイベントでuserIdをusers.jsonへ追記（重複チェック）する小ヘルパー
+受付基準: 新規友だちのuserIdが保存され、Push対象にできる
+正規化の一本化
+対象: app/utils/shift_normalize.py
+追加: 勤務種別テーブル定義（早出/遅出など）と1箇所集中。matching側はこれのみを参照
+受付基準: 追加勤務の表記ゆれが全てここで吸収される
+セキュリティ
 
-設定読込: get_settings()が.envを読み環境変数を反映（シートID/LINEトークン/SA JSON/TZ）。
-シフト取得: sheet_repo.load_shifts()→services/sheets_client.fetch_shifts()。
-SHEETS_IDがCSVパスならローカルCSVを読み込み、そうでなければGoogle Sheets APIで取得。
-ユーザー情報: user_repo.load_user_config()でユーザーの氏名/LINEユーザーID、load_avoid_list()で「苦手な人」一覧を取得（現状スタブ）。
-一致判定: services/matching.find_overlaps()で「同一日・同一勤務帯」の一致を抽出（実装要）。
-通知: 一致があればservices/line_client.send_message()でLINEに送信（スタブを実装置き換え予定）。
-実行I/F:
-API: POST /jobs/notify（クエリ?user=...で対象ユーザー指定可）
-Webhook: POST /line/webhook（将来、対話UIや設定変更に対応）
-定期: core/scheduler.pyで毎日実行に拡張予定
-起動と実行
+管理APIの保護（導入済）を補完
+追加: レスポンス/ログの機微情報マスキング（トークンやAPIキーは出さない）
+CORS/HTTPS方針をREADMEに明記（ngrok除く本番は必須）
+シークレット管理
+.envの鍵はGit管理外、SOPS/1Password/Vault/E2E共有ルールのドキュメント化
+運用・監視
 
-サーバ起動（開発）: uvicorn app.main:app --reload
-手動通知起動: curl -X POST 'http://localhost:8000/jobs/notify?user=ユーザーID'
-ヘルスチェック: GET /healthz
-設定（.env例）
+ログ整備（構造化）
+対象: 全体
+追加: request_id・ユーザーID・ジョブID・次回実行時刻をINFOで出力
+エラートラッキング
+Sentry統合（任意）: DSN、fastapi/logging/apschedulerの統合
+/readyzの健全性拡張
+追加: Sheets疎通（軽いget）・LINEトークン有効性（push未送信の軽検証 or スキップ）をオプションで
+データ・マッチング
 
-SHEETS_ID: GoogleシートID もしくは ローカルCSVパス
-GOOGLE_SERVICE_ACCOUNT_JSON: サービスアカウントJSON（パス or JSON文字列）
-LINE_CHANNEL_SECRET, LINE_CHANNEL_ACCESS_TOKEN: LINEチャネル情報
-TZ: 例 Asia/Tokyo
-ローカルCSVとクレンジング
+normalize_to_longの入口統一（導入済）
+追加: 列名の別名マッピング（name/氏名 など）を設定化し、正規化ロジックは設定駆動に
+名前の曖昧マッチ（軽量）
+半角/全角・スペース除去・カナ/ひらがな正規化（必要性に応じて段階導入）
+テストとDX
 
-アプリ側はservices/sheets_client._load_csv()でUTF-8/ヘッダー付のCSVを期待。
-もしCSVの整形/正規化が必要なら、scripts/直下のツール（scripts/gogle/data_clean.py など）で事前にクリーン化してからSHEETS_IDにそのパスを指定。
-未実装/今後のTODO（主要）
+単体テスト（pytest）
+対象: shift_normalize, matching, notify_service(formatのみ)
+受付基準: 代表サンプル（縦/横・表記揺れ）で期待一致
+開発ドキュメント
+README: セットアップ・.env・エンドポイント一覧・ngrok手順
+users.sample.jsonの説明（my_nameとシート氏名を一致させる注意）
+デプロイ整備（任意）
 
-services/matching.find_overlaps: 実ロジック（「日勤/準夜/深夜/公休」などのキー正規化→一致判定）
-services/line_client.send_message: LINE Push実装（公式SDK or 既存scripts/line_/push.py相当を移植）
-user_repo: 永続化実装（DB/Sheets/ファイル）とLINEユーザーID⇔氏名のマッピング
-line.py: 署名検証・イベント種別（message/follow/postback）処理・対話コマンド
-scheduler.py: APScheduler/cron連携で前日19:00/当日7:00などの定期実行
-例外/リトライ・監視ログの整備
-この設計で、APIからも定期実行からも同じサービス群を呼び出す構造になっています。必要であれば、マッチング仕様（勤務帯キーや一致条件の詳細）を詰め、実装まで進めます。
+Dockerfile + Runスクリプト（Cloud Run向けに最小）
+GitHub Actions（lint+test）
+ngrok手順をdocsに明記
+Serenaでの促進タスク（推奨プロンプト）
+
+コード健全性レビュー
+「このリポジトリのセキュリティ・耐障害性・保守性の観点でTop10改善点を出して」
+仕様に基づくテスト生成
+「shift_normalizeとmatchingの最小ユニットテストを生成して」
+ログ強化
+「通知フロー(run_notify)にrequest_idとユーザーIDを一貫して出力するパッチ」
+ドキュメント整備
+「ngrokを用いたWebhookテスト手順をREADMEに追記するパッチ」
+送信堅牢化
+「line_client.send_messageに429/5xxの指数バックオフ（最大3回）を追加」
+優先順（小さく回す）
+
+多ユーザー運用（スケジューラで全員）とログ整備
+LINE送信リトライ・長文対応
+WebhookでuserId保存（followのみ）
+最小のpytestで正規化・一致判定の回帰防止
+README/ngrok手順・運用注意（HTTPS/秘密管理）
+これらは今のコード構成（utils→repo→services→endpoints）に馴染みやすく、小刻みに適用できます。どこから当てますか？ Serenaでの自動パッチ化も対応します。

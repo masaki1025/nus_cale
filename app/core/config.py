@@ -43,6 +43,9 @@ class Settings:
         self.users_json = os.getenv("USERS_JSON", "")
         self.default_user_id = os.getenv("DEFAULT_USER_ID", "")
 
+        # Admin（管理系エンドポイントの保護用）
+        self.admin_api_key = os.getenv("ADMIN_API_KEY", "")
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -52,4 +55,3 @@ def get_settings() -> Settings:
     以降は同一インスタンスを返します。
     """
     return Settings()
-

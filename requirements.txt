@@ -8,3 +8,4 @@ gspread
 google-auth
 tzdata; platform_system == 'Windows'
 uv
+line-bot-sdk>=2.5.2,<3
