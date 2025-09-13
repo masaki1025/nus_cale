@@ -5,6 +5,7 @@ import base64
 import json
 
 from app.core.config import get_settings
+from app.services.line_handlers import handle_message, handle_follow
 
 
 router = APIRouter()
@@ -44,5 +45,13 @@ async def line_webhook(
 
     # 最小限の取り回し（今はログ用に返すのみ）
     events = payload.get("events", []) if isinstance(payload, dict) else []
-    # TODO: follow イベントで userId を保存、message イベントでコマンド処理 など
+    for ev in events:
+        etype = ev.get("type")
+        if etype == "message" and ev.get("message", {}).get("type") == "text":
+            handle_message(ev)
+        elif etype == "follow":
+            handle_follow(ev)
+        else:
+            # 未対応イベントは無視
+            pass
     return {"ok": True, "events": len(events)}

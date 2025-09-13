@@ -8,4 +8,5 @@ gspread
 google-auth
 tzdata; platform_system == 'Windows'
 uv
-line-bot-sdk>=2.5.2,<3
+# Use LINE SDK v2 series (v3 has breaking changes in import paths)
+line-bot-sdk>=3.17.0,<4

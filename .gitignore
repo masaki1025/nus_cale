@@ -71,7 +71,7 @@ google-service-account.json
 secrets/
 secrets/*.json
 nuscale-aefae1341773.json
-
+users.json
 # Docker 関連（任意）
 .docker/
 infra/.env

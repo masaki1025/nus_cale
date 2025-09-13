@@ -1,3 +1,11 @@
+"""
+Google Sheets / ローカルCSV からシフト行を取得するクライアント。
+
+- ローカルCSVパスを与えると CSV を読み込む
+- それ以外は Google スプレッドシートID（またはURL）として扱い、サービスアカウントで読み込む
+- 読み込むワークシート（タブ）は `worksheet_title` または `worksheet_gid` で指定可能
+"""
+
 from typing import Any, Dict, List, Optional
 import csv
 import json
@@ -11,7 +19,7 @@ from app.core.config import get_settings
 
 
 def _build_credentials(sa_json: str, scopes: List[str]) -> Credentials:
-    """サービスアカウント情報（ファイルパス or JSON文字列）から認証情報を作成します。"""
+    """サービスアカウント情報（ファイルパス or JSON文字列）から認証情報を生成する。"""
     if not sa_json:
         raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON が未設定です（.env を確認してください）。")
 
@@ -19,18 +27,18 @@ def _build_credentials(sa_json: str, scopes: List[str]) -> Credentials:
     if os.path.isfile(sa_json):
         return Credentials.from_service_account_file(sa_json, scopes=scopes)
 
-    # JSON文字列として扱う
+    # JSON文字列として解釈
     try:
         info = json.loads(sa_json)
         if not isinstance(info, dict):
             raise ValueError("not a dict")
         return Credentials.from_service_account_info(info, scopes=scopes)
     except Exception as e:
-        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON が不正です（パスまたはJSONを設定してください）。") from e
+        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON の形式が不正です（パスまたはJSON文字列を指定してください）。") from e
 
 
 def _load_csv(path: str) -> List[Dict[str, Any]]:
-    """ローカルの CSV を読み込み、ヘッダー行をキーにした辞書配列を返します。"""
+    """ローカルCSVを読み込み、ヘッダー行をキーにした辞書配列を返す。"""
     rows: List[Dict[str, Any]] = []
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -39,20 +47,25 @@ def _load_csv(path: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def fetch_shifts(sheet_id: str, worksheet_title: Optional[str] = None, worksheet_gid: Optional[int] = None) -> List[Dict[str, Any]]:
-    """シフト行を取得します（Google Sheets またはローカルCSV）。
+def fetch_shifts(
+    sheet_id: str,
+    worksheet_title: Optional[str] = None,
+    worksheet_gid: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """シフト行を取得する（Google Sheets またはローカルCSV）。
 
-    - `SHEETS_ID` が Google スプレッドシートの ID の場合 → Google Sheets から取得
-    - `SHEETS_ID` がローカルの CSV パスの場合（例: `sheet/data.csv`）→ CSV から取得
+    - `sheet_id` がローカルCSVパス（例: `sheet/data.csv`）ならCSVを読み込む
+    - それ以外は Google Sheets ID（URLも可）として扱い、サービスアカウントで読み込む
+    - Google Sheets 利用時は、`worksheet_title` または `worksheet_gid`（どちらか）でタブを指定可能
     """
     if not sheet_id:
         raise RuntimeError("SHEETS_ID が未設定です（.env を確認してください）。")
 
-    # ローカルCSVパスとして存在するなら優先して読み込む
+    # ローカルCSVならそのまま読み込み
     if os.path.isfile(sheet_id) and sheet_id.lower().endswith(".csv"):
         return _load_csv(sheet_id)
 
-    # それ以外は Google Sheets ID として扱う
+    # それ以外は Google Sheets ID として扱う（URLからID抽出も許容）
     settings = get_settings()
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets.readonly",
@@ -61,17 +74,19 @@ def fetch_shifts(sheet_id: str, worksheet_title: Optional[str] = None, worksheet
 
     try:
         client = gspread.authorize(creds)
+
         def _extract_sheet_key(value: str) -> str:
             m = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", value)
             return m.group(1) if m else value
+
         spreadsheet = client.open_by_key(_extract_sheet_key(sheet_id))
-        # ワークシート選択: タイトル > GID > 先頭（旧実装より前に早期リターン）
+        # ワークシート選択: タイトル > GID > 先頭
         try:
             ws = None
-            # Settings からの指定を使う場合は repository 層で渡す想定
-            if 'worksheet_title' in locals() and worksheet_title:
+            # repository 層から渡される指定を利用
+            if worksheet_title:
                 ws = spreadsheet.worksheet(worksheet_title)
-            elif 'worksheet_gid' in locals() and worksheet_gid is not None:
+            elif worksheet_gid is not None:
                 get_by_id = getattr(spreadsheet, "get_worksheet_by_id", None)
                 if callable(get_by_id):
                     ws = get_by_id(int(worksheet_gid))
@@ -85,14 +100,15 @@ def fetch_shifts(sheet_id: str, worksheet_title: Optional[str] = None, worksheet
             rows: List[Dict[str, Any]] = ws.get_all_records()
             return rows
         except Exception:
-            # 失敗時は従来の先頭シート取得にフォールバック（下のコードへ）
+            # 失敗時は先頭シート取得にフォールバック（下のコードへ）
             pass
-        worksheet = spreadsheet.sheet1  # 先頭シートを使用（必要に応じて変更）
+        worksheet = spreadsheet.sheet1  # フォールバック: 先頭シート
         rows: List[Dict[str, Any]] = worksheet.get_all_records()
         return rows
     except gspread.SpreadsheetNotFound as e:
-        raise RuntimeError("指定の SHEETS_ID のスプレッドシートが見つかりません。共有設定を確認してください。") from e
+        raise RuntimeError("指定の SHEETS_ID のスプレッドシートが見つかりません（ID/共有設定を確認してください）。") from e
     except gspread.exceptions.APIError as e:
-        raise RuntimeError("Google Sheets API エラーが発生しました。API有効化・権限を確認してください。") from e
+        raise RuntimeError("Google Sheets API エラーが発生しました（API有効化・権限を確認してください）。") from e
     except Exception as e:
-        raise RuntimeError("シート取得中に予期せぬエラーが発生しました。") from e
+        raise RuntimeError("シート取得で想定外のエラーが発生しました。") from e
+

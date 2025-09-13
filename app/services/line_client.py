@@ -1,15 +1,21 @@
 from typing import Any, Dict
 import os
 
-from linebot import LineBotApi
-from linebot.models import TextSendMessage
-from linebot.exceptions import LineBotApiError
+from linebot.v3.messaging import MessagingApi, Configuration, ApiClient
+from linebot.v3.messaging.models import PushMessageRequest, TextMessage
+try:
+    from linebot.v3.exceptions import ApiException as LineApiException
+except Exception:
+    try:
+        from linebot.exceptions import LineBotApiError as LineApiException  # v2 fallback
+    except Exception:
+        LineApiException = Exception  # 最後の手段
 
 from app.core.config import get_settings
 
 
 def send_message(line_user_id: str, message: str) -> Dict[str, Any]:
-    """LINE Pushメッセージを送信する（SDK実装）。
+    """LINE Pushメッセージを送信する（SDK v3）。
 
     引数:
         line_user_id: 送信先ユーザーの userId（Botと友だち状態が必要）
@@ -26,12 +32,18 @@ def send_message(line_user_id: str, message: str) -> Dict[str, Any]:
     if not token:
         raise RuntimeError("LINE_CHANNEL_ACCESS_TOKEN が未設定です（.env を確認してください）。")
 
-    api = LineBotApi(token)
+    config = Configuration(access_token=token)
     try:
-        api.push_message(line_user_id, TextSendMessage(text=message))
+        with ApiClient(config) as api_client:
+            api = MessagingApi(api_client)
+            api.push_message(
+                PushMessageRequest(
+                    to=line_user_id,
+                    messages=[TextMessage(text=message)],
+                )
+            )
         return {"ok": True, "user": line_user_id}
-    except LineBotApiError as e:
-        # SDKの例外には status_code / error 内訳が含まれる
-        status = getattr(e, "status_code", None)
-        details = getattr(e, "error", None)
-        raise RuntimeError(f"LINE push 失敗: status={status} error={details}") from e
+    except LineApiException as e:
+        status = getattr(e, "status", None)
+        body = getattr(e, "body", None)
+        raise RuntimeError(f"LINE push 失敗: status={status} body={body}") from e
