@@ -45,7 +45,7 @@ temp/
 .vscode/
 .idea/
 *.code-workspace
-
+.codex
 # OS 由来
 .DS_Store
 Thumbs.db
@@ -63,6 +63,7 @@ desktop.ini
 *.crt
 *.p12
 *.cer
+
 credentials.json
 *credentials*.json
 service_account.json
